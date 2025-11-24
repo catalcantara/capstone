@@ -1,6 +1,5 @@
 from machine import Pin, UART, PWM
 import time
-import _thread
 import sys
 import select
 import math 
@@ -84,7 +83,6 @@ K_I = 0.1
 
 # ---- VARIABLES COMPARTIDAS ENTRE CORES ----
 hall_count = 0
-hall_lock = _thread.allocate_lock()
 
 dir_rot = 1   # 1 → horario, -1 → antihorario
 enc_count = 0
@@ -119,13 +117,21 @@ def set_duty(duty_ns_f: float, servo: PWM) -> None:
 # ============================================================
 # == TAREA EN CORE 1 → CONTROL DEL MOTOR ROTACIONAL Y HALL ===
 # ============================================================
-def tarea_rotacion():
-    global hall_count, dir_rot, srv_stop, imagen_detectada
-
+def tarea():
+    global hall_count, dir_rot, srv_stop, imagen_detectada, cant_enc_d_c
     # Activar velocidad inicial
     set_duty ((srv_stop + vel_rot) * dir_rot, servo_pwm)
-
+    time.sleep (1.5)
+    # Activar velocidad tracción
+    send_sabertooth_com (int (senal_vel))
+    err_prev = cant_enc_d_c
+    error = cant_enc_d_c
+    d_t_a = time.ticks_ms ()
+    d_t = time.ticks_ms ()
     while True:
+        d_t = d_t_a - time.ticks_ms ()
+        d_t_a = d_t
+        if enc_1_A.value () == 1: enc_count += 1
         # --- Detectar imagen ---
         # if uart_im_det.value () == 1:
         # if imagen_detectada == 1:
@@ -135,22 +141,39 @@ def tarea_rotacion():
         #     time.sleep (0.1)
         #     set_duty (srv_stop, servo_pwm)
         #     time.sleep (1)
+        #     print("Imagen detectada → modificar comportamiento")
+        #     send_sabertooth_com (0)
+        #     time.sleep (0.1)
+
+        #     # Se retrocede un poco
+        #     send_sabertooth_com (int (-senal_vel))
+        #     time.sleep (0.1)
+        #     # Se avanza sin girar la cámara
+        #     send_sabertooth_com (int (senal_vel))
+        #     time.sleep (0.5)
+        #     # Se retrocede sin girar la cámara
+        #     send_sabertooth_com (0)
+        #     time.sleep (0.1)
+        #     send_sabertooth_com (int (- senal_vel))
+        #     time.sleep (0.5)
+
+        #     # Se continúa el avance
+        #     send_sabertooth_com (senal_vel)
 
         # --- Detectar imán ---
         if hall.value() == 1:
             # Contador seguro (zona crítica)
-            with hall_lock:
-                hall_count += 1
-                n = hall_count
+            hall_count += 1
 
-            print("Imán detectado, total:", n)
+            print("Imán detectado, total:", hall_count)
 
             # Reducir velocidad 10% durante 0.5 s
             set_duty(srv_stop, servo_pwm)
+            send_sabertooth_com (0)
             time.sleep(1)
 
             # Si es el 4° imán: detener e invertir dirección
-            if n % 3 == 0:
+            if hall_count % 3 == 0:
                 print("4° imán → invertir rotación")
 
                 # Stop breve
@@ -162,56 +185,13 @@ def tarea_rotacion():
 
             # Restaurar velocidad normal
             set_duty(vel_rot * dir_rot + srv_stop, servo_pwm)
+            send_sabertooth_com (int (senal_vel))
 
             # Esperar a que el sensor vuelva a LOW (evitar doble conteo)
             while hall.value() == 1:
                 time.sleep(0.01)
-
-        # ============================================================
-        # Se le podría agregar un else que haga un control de velocidad con el encoder
-        # ============================================================
-
-        time.sleep(0.005)
-
-
-# ============================================================
-# ===== TAREA EN CORE 0 → CONTROL DE MOTORES DE TRACCIÓN =====
-# ============================================================
-def tarea_traccion():
-    global imagen_detectada, cant_enc_d_c
-    time.sleep (1.5)
-    send_sabertooth_com (int (senal_vel))
-    err_prev = cant_enc_d_c
-    error = cant_enc_d_c
-    d_t_a = time.ticks_ms ()
-    d_t = time.ticks_ms ()
-    while True:
-        d_t = d_t_a - time.ticks_ms ()
-        d_t_a = d_t
-        if enc_1_A.value () == 1: enc_count += 1
-
-        # if uart_im_id.value () == 1:
-        if imagen_detectada == 1:
-            print("Imagen detectada → modificar comportamiento")
-            send_sabertooth_com (0)
-            time.sleep (0.1)
-
-            # Se retrocede un poco
-            send_sabertooth_com (int (-senal_vel))
-            time.sleep (0.1)
-            # Se avanza sin girar la cámara
-            send_sabertooth_com (int (senal_vel))
-            time.sleep (0.5)
-            # Se retrocede sin girar la cámara
-            send_sabertooth_com (0)
-            time.sleep (0.1)
-            send_sabertooth_com (int (- senal_vel))
-            time.sleep (0.5)
-
-            # Se continúa el avance
-            send_sabertooth_com (senal_vel)
-
-        if hall.value () != 1:
+        else:
+            set_duty(vel_rot * dir_rot + srv_stop, servo_pwm)
             while enc_count < cant_enc_d_c:
                 err_prev = error
                 error = cant_enc_d_c - enc_count
@@ -241,8 +221,6 @@ def tarea_traccion():
             error = 0
             time.sleep(0.05)
 
-        time.sleep(0.01)
-
 
 
 poller = select.poll()
@@ -258,15 +236,7 @@ try:
         print('\n')
         imagen_detectada = int (cmd)
 
-    # ============================================================
-    # ================ INICIAR THREAD EN CORE 1 ==================
-    # ============================================================
-    _thread.start_new_thread(tarea_rotacion, ())
-
-    # ============================================================
-    # ================ CORE 0 EJECUTA TRACCIÓN ===================
-    # ============================================================
-    tarea_traccion()
+    tarea ()
 
 
 except KeyboardInterrupt:
