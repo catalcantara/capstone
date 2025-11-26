@@ -19,7 +19,6 @@ max_vel_rpm = max_vel * rpm_max / real_max_vel # Velocidad máxima en rpm (290)
 servo_freq = 50 #[Hz]
 srv_stop = 1.5 * 1e6
 srv_max = 2.4 * 1e6
-srv_min = 0.6 * 1e6
 vel_rot = 0.9 * 1e6
 
 # Tiempo
@@ -235,7 +234,6 @@ def tarea_traccion():
             time.sleep(0.1)
 
             # Reiniciar tramo
-            enc_count = 0
             err_prev = 0
             sum_err = 0
             error = 0
