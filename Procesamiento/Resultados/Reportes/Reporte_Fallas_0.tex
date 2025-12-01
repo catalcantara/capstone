@@ -1,0 +1,79 @@
+\documentclass[11pt,letterpaper,twoside]{report}\n
+\usepackage[utf8]{inputenc}
+\usepackage[english, spanish]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{booktabs}
+\usepackage{array}
+\newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhead[L]{Reporte de fallas\\ Cable de alta tensión}
+\fancyhead[R]{\thepage}
+\thispagestyle{plain}
+\def\doctitle{Tarea 4}
+\def\docsubtitle{Diseño de Bajo Nivel}
+\def\docdate{10.09.2025}
+\def\coursename{IRB2002 -- Diseñoo de Sistemas Robóticos}
+\def\authornamea{Catalina Alcántara}
+\def\authornameb{Ignacio Campillay}
+\def\authornamec{Vittorio Cherubini}
+\def\authornamed{Sebastián Madrid}
+\def\groupnum{Grupo N$^\circ$ 3}
+\def\deptname{Escuela de Ingeniería / Major en Ingeniería Robótica}
+\def\orgname{Pontificia Universidad Católica de Chile}
+\inputencoding{utf8}
+\begin{document}
+\noindent
+\begin{titlepage}
+\mbox{}\\[-0.99\baselineskip]
+\setlength{\unitlength}{1mm}
+\parbox{30mm}{\includegraphics[scale=0.47]{figs/logo_uc.pdf}\\[-0.55\baselineskip]}
+\parbox{\textwidth}{
+{\large \coursename}\\
+{\sc \deptname  }\\
+{\sc \orgname}
+}
+\rule[0ex]{\textwidth}{.4pt}
+
+\vspace{50mm}
+\parbox{\textwidth}{
+{\centering
+{\Huge \bf \doctitle}\\
+\vspace{10mm}
+{\LARGE \bf \docsubtitle}\\
+\vspace{10mm}
+{\Large \groupnum\\}
+\vspace{10mm}
+{\Large
+\authornamea\\
+\vspace{1mm}
+\authornameb\\
+\vspace{1mm}
+\authornamec\\
+\vspace{2mm}
+\authornamed}\\
+\vspace{10mm}
+{\Large  \docdate}\\
+}}
+\end{titlepage}
+\def\contentsname{\normalfont \Large Tabla de Contenidos\vspace*{-1cm}}
+\vspace*{-2cm}
+\parbox[t]{\textwidth}{
+{\tableofcontents}}
+\newpage
+\section{Reporte fallas}
+\begin{table}[H]
+\centering
+\begin{tabular}{|M{1cm}|M{2cm}|M{2cm}|M{5cm} |}
+\hline
+\textbf{ID} & \textbf{Posición} & \textbf{Tipo} & \textbf{Imagen}\\
+\hline
+\end{tabular}
+\end{table}
+\end{document}
