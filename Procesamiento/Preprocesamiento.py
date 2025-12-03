@@ -1,118 +1,254 @@
 import cv2
+import os
 
-def funcion ():
-    # Definir los nombres de los archivos de entrenamiento
-    arr_train = ["Cable_1.jpeg",
-                "Cable_2.jpeg",
-                "Cable_3.jpeg",
-                "Cable_4.jpeg",
-                "Cable_5.jpeg",
-                "Cable_6.jpeg",
-                "Cable_7.jpeg",
-                "Cable_11.jpeg",
-                "Cable_12.jpeg",
-                "Cable_13.jpeg",
-                "Cable_14.jpg",
-                "Cable_16.jpg",
-                "Cable_17.jpg",
-                "Cable_18.jpg",
-                "Cable_19.jpg",
-                "Cable_21.png",
-                "Cable_24.png",
-                "Cable_25.png",
-                "Cable_26.png",
-                "Cable_27.png",
-                "Cable_28.png",
-                "Cable_29.png",
-                "Cable_30.png",
-                "Cable_31.png",
-                "Cable_32.png",
-                "Cable_falla_1.jpeg",
-                "Cable_falla_2.jpeg",
-                "Cable_falla_3.jpeg",
-                "Cable_falla_4.jpeg",
-                "Cable_falla_6.jpeg",
-                "Cable_falla_7.jpeg",
-                "Cable_falla_10.jpeg",
-                "Cable_falla_11.jpeg",
-                "Cable_falla_12.png",
-                "Cable_falla_13.png",
-                "Cable_falla_14.png",
-                "Cable_falla_16.png",
-                "Cable_falla_17.png"]
+# Clases YOLO (modifica si quieres)
+CLASES = {
+    "C": 0,  # Cable
+    "S": 1,  # Scotch
+    "F": 2,  # Fisura
+    "D": 3,  # Desgaste
+    "R": 4,  # Rotura
+    "H": 5   # Hendidura
+}
 
-    # Definir los archivos de prueba
-    arr_val = ["Cable_8.jpeg",
-            "Cable_9.jpeg",
-            "Cable_15.jpg",
-            "Cable_20.png",
-            "Cable_22.png",
-            "Cable_23.png",
-            "Cable_falla_5.jpeg",
-            "Cable_falla_8.jpeg",
-            "Cable_falla_9.jpeg",
-            "Cable_falla_15.png"]
+drawing = False
+ix, iy = -1, -1
+bbox = None
 
-    # Definir los paths principales
-    array = [arr_val]
-    path = "./capstone/Procesamiento/Imagenes/"
-    path_1 = "label/"
-    path_2 = "images/"
 
-    for a in array:
-        for file in a:
-            # Definir si corresponde a train o val
-            if a == arr_train:
-                path_3 = "train/"
-            else:
-                path_3 = "val/"
-            # Definir el resto de los paths
-            file_txt = file.split (".")[0]
-            path_im = path + path_2 + path_3 + file
-            path_txt = path + path_1 + path_3 + file_txt + ".txt"
+def draw_rectangle(event, x, y, flags, param):
+    global ix, iy, drawing, bbox
 
-            img_prev = cv2.imread(path_im)
-            if img_prev is None:
-                print(f"Error: no se pudo cargar la imagen {path_im}")
-                continue
-            H, W = img_prev.shape[:2]
-            m = max (H, W)
-            factor = 600 / m
-            img = cv2.resize (img_prev, (0, 0), fx = factor, fy = factor)
-            H, W = img.shape[:2]
-            clone = img.copy()
-            roi = cv2.selectROI("Selecciona la falla", img, showCrosshair=True, fromCenter=False)
-            cv2.destroyAllWindows()
+    if event == cv2.EVENT_LBUTTONDOWN:
+        drawing = True
+        ix, iy = x, y
+        bbox = None
 
-            x_min = int(roi[0])
-            y_min = int(roi[1])
-            w = int(roi[2])
-            h = int(roi[3])
+    elif event == cv2.EVENT_MOUSEMOVE:
+        if drawing:
+            bbox = (ix, iy, x, y)
 
-            # Si no seleccionaste nada → archivo vacío
-            if w == 0 or h == 0:
-                with open (path_txt, "w") as txt:
-                    print(">> No se seleccionó ninguna falla → creando archivo .txt vacío")
-                continue
+    elif event == cv2.EVENT_LBUTTONUP:
+        drawing = False
+        bbox = (ix, iy, x, y)
 
-            x_max = x_min + w
-            y_max = y_min + h
 
-            print("Bounding box:")
-            print(f"x_min={x_min}, y_min={y_min}, x_max={x_max}, y_max={y_max}")
+def normalizar_bbox(x1, y1, x2, y2, img_w, img_h):
+    # Corregir inversión al arrastrar de derecha a izquierda
+    xmin = min(x1, x2)
+    xmax = max(x1, x2)
+    ymin = min(y1, y2)
+    ymax = max(y1, y2)
 
-            # Conversión YOLO
-            cx = ((x_min + x_max) / 2) / W
-            cy = ((y_min + y_max) / 2) / H
-            bw = (x_max - x_min) / W
-            bh = (y_max - y_min) / H
+    w = xmax - xmin
+    h = ymax - ymin
 
-            print(f"YOLO line:")
-            print(f"0 {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}")
+    x_center = xmin + w / 2
+    y_center = ymin + h / 2
 
-            with open (path_txt, "w") as txt:
-                txt.write (f"0 {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}")
+    # Normalizar entre 0 y 1
+    return x_center / img_w, y_center / img_h, w / img_w, h / img_h
 
-path = "./capstone/Procesamiento/Imagenes/label/train/Cable_1.txt"
-with open(path, 'r', encoding='utf-8') as f:
-    print(repr(f.read()))
+
+def encontrar_cable(ruta_img):
+    global bbox
+    bbox = None
+
+    img_prev = cv2.imread(ruta_img)
+    if img_prev is None:
+        print(f"Error: no se pudo cargar la imagen {ruta_img}")
+        return
+    h, w = img_prev.shape[:2]
+    m = max (h, w)
+    factor = 600 / m
+    img = cv2.resize (img_prev, (0, 0), fx = factor, fy = factor)
+    H, W = img.shape[:2]
+
+    cv2.namedWindow(ruta_img)
+    cv2.setMouseCallback(ruta_img, draw_rectangle)
+
+    print("\n==============================")
+    print(f"Imagen: {ruta_img}")
+    print("Dibuja un bounding box. Presiona 'g' para guardar o 'n' si NO HAY falla.")
+    print("==============================")
+    print("\nTipo de falla:")
+    print("[C] Cable")
+    print("[S] Scotch")
+    print("[F] Fisura")
+    print("[R] Rotura")
+    print("[D] Desgaste")
+    print("[H] Hendidura")
+
+    while True:
+        clone = img.copy()
+
+        if bbox:
+            cv2.rectangle(clone, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0,255,0), 2)
+
+        cv2.imshow(ruta_img, clone)
+        k = cv2.waitKey(1)
+
+        if k == ord('g') and bbox is not None:
+
+            x1, y1, x2, y2 = bbox
+            print (x1, y1, x2, y2)
+            if x1 < 5: x1 = 0
+            if y1 < 5: y1 = 0
+            if x2 > W - 5: x2 = W
+            if y2 > H - 5: y2 = H
+            guardar_recorte (img, ruta_img, x1, y1, x2, y2)
+            xc, yc, ww, hh = normalizar_bbox(x1, y1, x2, y2, W, H)
+            # Exportar .txt
+            escribir_im_txt (ruta_img, xc, yc, ww, hh)
+
+            break
+
+        if k == ord('q'):
+            print("❌ Cancelado")
+            break
+
+    cv2.destroyAllWindows()
+
+def etiquetar_imagen(ruta_img):
+    global bbox
+    bbox = None
+
+    img = cv2.imread(ruta_img)
+    if img is None:
+        print(f"Error: no se pudo cargar la imagen {ruta_img}")
+        return
+    H, W = img.shape[:2]
+
+    cv2.namedWindow(ruta_img)
+    cv2.setMouseCallback(ruta_img, draw_rectangle)
+
+    print("\n==============================")
+    print(f"Imagen: {ruta_img}")
+    print("Dibuja un bounding box. Presiona 'g' para guardar o 'n' si NO HAY falla.")
+    print("==============================")
+    print("\nTipo de falla:")
+    print("[C] Cable")
+    print("[S] Scotch")
+    print("[F] Fisura")
+    print("[R] Rotura")
+    print("[D] Desgaste")
+    print("[H] Hendidura")
+
+    while True:
+        clone = img.copy()
+
+        if bbox:
+            cv2.rectangle(clone, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0,255,0), 2)
+
+        cv2.imshow(ruta_img, clone)
+        k = cv2.waitKey(1)
+
+        if k == ord('g') and bbox is not None:
+            # Preguntar tipo de falla
+            while True:
+                k_2 = cv2.waitKey(1)
+                tipo = 0
+                if k_2 == ord('c'): tipo = "C"
+                if k_2 == ord('s'): tipo = "S"
+                if k_2 == ord('f'): tipo = "F"
+                if k_2 == ord('r'): tipo = "R"
+                if k_2 == ord('d'): tipo = "D"
+                if k_2 == ord('h'): tipo = "H"
+                if tipo != 0: break
+
+            if tipo not in CLASES:
+                print("Tipo inválido. Se cancela.")
+                return
+
+            class_id = CLASES[tipo]
+
+            x1, y1, x2, y2 = bbox
+            xc, yc, ww, hh = normalizar_bbox(x1, y1, x2, y2, W, H)
+
+            # Exportar .txt
+            ruta_txt = ruta_img.replace(".jpg", ".txt").replace(".png", ".txt").replace(".jpeg", ".txt").replace("images", "label")
+            with open(ruta_txt, "w") as f:
+                f.write(f"{class_id} {xc:.6f} {yc:.6f} {ww:.6f} {hh:.6f}\n")
+
+            print(f"✔ Etiqueta guardada en {ruta_txt}")
+            break
+
+        if k == ord('n'):  # No hay falla
+            ruta_txt = ruta_img.replace(".jpg", ".txt").replace(".png", ".txt")
+            open(ruta_txt, "w").close()
+            print(f"✔ Imagen sin falla → archivo vacío generado: {ruta_txt}")
+            break
+
+        if k == ord('q'):
+            print("❌ Cancelado")
+            break
+
+    cv2.destroyAllWindows()
+
+
+"""Errores:
+Cable_24 (aprox)
+"""
+def guardar_recorte (img, ruta, x1, y1, x2, y2):
+        # Recortar imagen
+    crop = img[y1:y2, x1:x2]
+    r_im = os.path.split (ruta)[-1]
+
+    # Guardar imagen recortada
+    out_img_path = os.path.join("Procesamiento", "Cables", "images", r_im)
+    cv2.imwrite(out_img_path, crop)
+
+def escribir_im_txt (ruta, xc, yc, ww, hh):
+    # Generar label en formato YOLO (normalizado)
+
+    # Guardar archivo .txt con misma base del nombre
+    txt_name = os.path.split (ruta)[-1].split (".")[0] + ".txt"
+    txt_path = os.path.join ("Procesamiento", "Imagenes", "label", txt_name)
+
+    with open(txt_path, "w") as f:
+        f.write(f"0 {xc:.6f} {yc:.6f} {ww:.6f} {hh:.6f}\n")
+
+    print(f"[OK] Procesado: {txt_name} → recortado + etiqueta guardada.")
+
+def procesar_carpeta(ruta_carpeta):
+    imagenes = [f for f in os.listdir(ruta_carpeta)]
+
+    for img in imagenes:
+        etiquetar_imagen(os.path.join(ruta_carpeta, img))
+
+def cambiar_clase (ruta):
+    textos = [f for f in os.listdir(ruta)]
+
+    for t in textos:
+        path = os.path.join (ruta, t)
+        new_lines = []
+        with open(path, "r") as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) != 5:
+                    print(f"Línea inválida en {path}: {line}")
+                    continue
+
+                cls = int(parts[0])
+                x, y, w, h = parts[1:]
+
+                # Restar 1 a la clase
+                # new_cls = cls + 1
+
+                new_lines.append(f"{cls} {x} {y} {w} {h}")
+
+        # Escribir el resultado
+        with open(path, "w") as f:
+            f.write(new_lines[0])
+
+# ===============================
+#       EJECUCIÓN
+# ===============================
+
+if __name__ == "__main__":
+    carpeta = os.path.join("Procesamiento", "Cables", "label")
+    r_1 = os.path.join (carpeta, "train")
+    r_2 = os.path.join (carpeta, "val")
+
+    cambiar_clase (r_1)
+    cambiar_clase (r_2)

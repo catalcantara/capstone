@@ -1,0 +1,10 @@
+path: /Procesamiento/Cables/
+train: images/train
+val: images/val
+
+names:
+  0: scotch
+  1: fisura
+  2: rotura
+  3: desgaste
+  4: hendidura
